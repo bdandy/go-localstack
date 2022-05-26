@@ -82,6 +82,45 @@ func TestWithLogger(t *testing.T) {
 	}
 }
 
+func TestWithTimeoutOnStartup(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	l, err := localstack.NewInstance(localstack.WithTimeout(time.Second))
+	require.NoError(t, err)
+	require.EqualError(t, l.StartWithContext(ctx), "localstack container has been stopped")
+
+	cli, err := client.NewClientWithOpts(client.FromEnv)
+	require.NoError(t, err)
+	containers, err := cli.ContainerList(ctx, types.ContainerListOptions{})
+	require.NoError(t, err)
+	for _, c := range containers {
+		if c.Image == "go-localstack" {
+			t.Fatal("image is still running but should be terminated")
+		}
+	}
+}
+
+func TestWithTimeoutAfterStartup(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	l, err := localstack.NewInstance(localstack.WithTimeout(20 * time.Second))
+	require.NoError(t, err)
+	timer := time.NewTimer(25 * time.Second)
+	defer timer.Stop()
+	require.NoError(t, l.StartWithContext(ctx))
+
+	<-timer.C
+	cli, err := client.NewClientWithOpts(client.FromEnv)
+	require.NoError(t, err)
+	containers, err := cli.ContainerList(ctx, types.ContainerListOptions{})
+	require.NoError(t, err)
+	for _, c := range containers {
+		if c.Image == "go-localstack" {
+			t.Fatal("image is still running but should be terminated")
+		}
+	}
+}
+
 func TestWithLabels(t *testing.T) {
 	for _, s := range []struct {
 		name   string
