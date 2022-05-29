@@ -313,26 +313,26 @@ func (i *Instance) startLocalstack(ctx context.Context, services ...Service) err
 	}
 
 	if i.log.Level == logrus.DebugLevel {
-		go func(ctx context.Context) {
-			reader, err := i.cli.ContainerLogs(ctx, containerId, types.ContainerLogsOptions{
+		go func(ctx context.Context, cli internal.DockerClient, log *logrus.Logger) {
+			reader, err := cli.ContainerLogs(ctx, containerId, types.ContainerLogsOptions{
 				ShowStdout: true,
 				ShowStderr: true,
 				Follow:     true,
 				Timestamps: true,
 			})
 			if err != nil {
-				i.log.Error(err)
+				log.Error(err)
 				return
 			}
 			defer func() {
 				if err := reader.Close(); err != nil {
-					i.log.Error(err)
+					log.Error(err)
 				}
 			}()
-			if _, err := io.Copy(i.log.Out, reader); err != nil {
-				i.log.Error(err)
+			if _, err := io.Copy(log.Out, reader); err != nil {
+				log.Error(err)
 			}
-		}(ctx)
+		}(ctx, i.cli, i.log)
 	}
 
 	return i.mapPorts(ctx, services, containerId, 0)
