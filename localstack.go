@@ -290,9 +290,12 @@ func (i *Instance) startLocalstack(ctx context.Context, services ...Service) err
 
 	resp, err := i.cli.ContainerCreate(ctx,
 		&container.Config{
-			Image:  imageName,
-			Env:    environmentVariables,
-			Labels: i.labels,
+			Image:        imageName,
+			Env:          environmentVariables,
+			Labels:       i.labels,
+			Tty:          true,
+			AttachStdout: true,
+			AttachStderr: true,
 		}, &container.HostConfig{
 			PortBindings: pm,
 			AutoRemove:   true,
@@ -307,6 +310,29 @@ func (i *Instance) startLocalstack(ctx context.Context, services ...Service) err
 	containerId := resp.ID
 	if err := i.cli.ContainerStart(ctx, containerId, types.ContainerStartOptions{}); err != nil {
 		return fmt.Errorf("localstack: could not start container: %w", err)
+	}
+
+	if i.log.Level == logrus.DebugLevel {
+		go func(ctx context.Context) {
+			reader, err := i.cli.ContainerLogs(ctx, containerId, types.ContainerLogsOptions{
+				ShowStdout: true,
+				ShowStderr: true,
+				Follow:     true,
+				Timestamps: true,
+			})
+			if err != nil {
+				i.log.Error(err)
+				return
+			}
+			defer func() {
+				if err := reader.Close(); err != nil {
+					i.log.Error(err)
+				}
+			}()
+			if _, err := io.Copy(i.log.Out, reader); err != nil {
+				i.log.Error(err)
+			}
+		}(ctx)
 	}
 
 	return i.mapPorts(ctx, services, containerId, 0)
