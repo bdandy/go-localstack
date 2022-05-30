@@ -313,31 +313,6 @@ func (i *Instance) startLocalstack(ctx context.Context, services ...Service) err
 		return fmt.Errorf("localstack: could not start container: %w", err)
 	}
 
-	if i.log.Level == logrus.DebugLevel {
-		go func(ctx context.Context, cli internal.DockerClient, log *logrus.Logger) {
-			reader, err := cli.ContainerLogs(ctx, containerId, types.ContainerLogsOptions{
-				ShowStdout: true,
-				ShowStderr: true,
-				Follow:     true,
-				Timestamps: false,
-			})
-			if err != nil {
-				log.Error(err)
-				return
-			}
-			defer logClose(reader)
-
-			w := i.log.Writer()
-			defer logClose(w)
-
-			if _, err := io.Copy(w, reader); err != nil {
-				if err := w.CloseWithError(err); err != nil {
-					log.Println(err)
-				}
-			}
-		}(ctx, i.cli, i.log)
-	}
-
 	return i.mapPorts(ctx, services, containerId, 0)
 }
 
