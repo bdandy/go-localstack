@@ -33,6 +33,7 @@ import (
 	"github.com/docker/go-connections/nat"
 	"github.com/sirupsen/logrus"
 	"io"
+	"log"
 	"sync"
 	"time"
 
@@ -318,19 +319,21 @@ func (i *Instance) startLocalstack(ctx context.Context, services ...Service) err
 				ShowStdout: true,
 				ShowStderr: true,
 				Follow:     true,
-				Timestamps: true,
+				Timestamps: false,
 			})
 			if err != nil {
 				log.Error(err)
 				return
 			}
-			defer func() {
-				if err := reader.Close(); err != nil {
-					log.Error(err)
+			defer logClose(reader)
+
+			w := i.log.Writer()
+			defer logClose(w)
+
+			if _, err := io.Copy(w, reader); err != nil {
+				if err := w.CloseWithError(err); err != nil {
+					log.Println(err)
 				}
-			}()
-			if _, err := io.Copy(log.Out, reader); err != nil {
-				log.Error(err)
 			}
 		}(ctx, i.cli, i.log)
 	}
@@ -344,11 +347,7 @@ var dockerTemplate string
 func (i *Instance) buildLocalImage(ctx context.Context) error {
 	buf := &bytes.Buffer{}
 	tw := tar.NewWriter(buf)
-	defer func() {
-		if err := tw.Close(); err != nil {
-			i.log.Error(err)
-		}
-	}()
+	defer logClose(tw)
 
 	dockerFile := "Dockerfile"
 	dockerFileContent := []byte(fmt.Sprintf(dockerTemplate, i.version, int(i.timeout.Seconds())))
@@ -374,11 +373,8 @@ func (i *Instance) buildLocalImage(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if err := imageBuildResponse.Body.Close(); err != nil {
-			i.log.Error(err)
-		}
-	}()
+	defer logClose(imageBuildResponse.Body)
+
 	_, err = io.Copy(io.Discard, imageBuildResponse.Body)
 	return err
 }
@@ -530,4 +526,10 @@ func containsService(services []Service, service Service) bool {
 		}
 	}
 	return false
+}
+
+func logClose(closer io.Closer) {
+	if err := closer.Close(); err != nil {
+		log.Println(err)
+	}
 }
